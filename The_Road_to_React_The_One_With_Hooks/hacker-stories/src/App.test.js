@@ -1,181 +1,263 @@
 import React from 'react';
-import { render } from '@testing-library/react';
+import App, { storiesReducer } from './App';
+import { Item } from './List';
+import SearchForm from './SearchForm';
+
+import {
+    render,
+    screen,
+    fireEvent,
+    act,
+} from '@testing-library/react';
 import axios from 'axios';
-import renderer from 'react-test-renderer';
-import App, { Item, List, SearchForm, InputWithLabel } from './App';
 
-describe('Item', () => {
-    const item = {
-        title: 'React',
-        url: 'https://reactjs.org/',
-        author: 'Jordan Walke',
-        num_comments: 3,
-        points: 4,
-        objectID: 0,
-    };
 
-    const handleRemoveItem = jest.fn();
+jest.mock('axios');
 
-    let component;
-    beforeEach(() => {
-        component = renderer.create(
-            <Item item={item} onRemoveItem={handleRemoveItem} />
-        );
-    });
+const storyOne = {
+    title: 'React',
+    url: 'https://reactjs.org/',
+    author: 'Jordan Walke',
+    num_comments: 3,
+    points: 4,
+    objectID: 0,
+};
 
-    it('renders all properties', () => {
+const storyTwo = {
+    title: 'Redux',
+    url: 'https://redux.js.org/',
+    author: 'Dan Abramov, Andrew Clark',
+    num_comments: 2,
+    points: 5,
+    objectID: 1,
+};
 
-        expect(component.root.findByType('a').props.href).toEqual(
-            'https://reactjs.org/'
-        );
-        // Since there are multiple span elements, we find all of them and select the second one(index is 1, because we count from 0) and compare its React children prop to the item’s author.This test isn’t thorough enough, though.Once the order of span elements in the Item component changes, the test fails.Avoid this flaw by changing the assertion to:
-        expect(
-            component.root.findAllByProps({ children: 'Jordan Walke' })
-                .length
-        ).toEqual(1);
-    });
+const stories = [storyOne, storyTwo];
 
-    it('calls onRemoveItem on button click', () => {
-        component.root.findByType('button').props.onClick();
+describe('storiesReducer', () => {
+    test('removes a story from all stories', () => {
+        const action = { type: 'REMOVE_STORY', payload: storyOne };
+        const state = { data: stories, isLoading: false, isError: false };
 
-        expect(handleRemoveItem).toHaveBeenCalledTimes(1);
-        expect(handleRemoveItem).toHaveBeenCalledWith(item);
+        const newState = storiesReducer(state, action);
 
-        expect(component.root.findAllByType(Item).length).toEqual(1);
+        const expectedState = {
+            data: [storyTwo],
+            isLoading: false,
+            isError: false,
+        };
+
+        expect(newState).toStrictEqual(expectedState);
     });
 });
 
-describe('List', () => {
-    const list = [
-        {
-            title: 'React',
-            url: 'https://reactjs.org/',
-            author: 'Jordan Walke',
-            num_comments: 3,
-            points: 4,
-            objectID: 0,
-        },
-        {
-            title: 'Redux',
-            url: 'https://redux.js.org/',
-            author: 'Dan Abramov, Andrew Clark',
-            num_comments: 2,
-            points: 5,
-            objectID: 1,
-        },
-    ];
+describe('Item', () => {
+    test('renders all properties', () => {
+        render(<Item item={storyOne} />);
 
-    it('renders two items', () => {
-        const component = renderer.create(<List list={list} />);
+        expect(screen.getByText('Jordan Walke')).toBeInTheDocument();
+        expect(screen.getByText('React')).toHaveAttribute(
+            'href',
+            'https://reactjs.org/'
+        );
+    });
 
-        expect(component.root.findAllByType(Item).length).toEqual(2);
+    test('renders a clickable dismiss button', () => {
+        render(<Item item={storyOne} />);
+
+        expect(screen.getByRole('button')).toBeInTheDocument();
+    });
+
+    test('clicking the dismiss button calls the callback handler', () => {
+        const handleRemoveItem = jest.fn();
+
+        render(<Item item={storyOne} onRemoveItem={handleRemoveItem} />);
+
+        fireEvent.click(screen.getByRole('button'));
+
+        expect(handleRemoveItem).toHaveBeenCalledTimes(1);
     });
 });
 
 describe('SearchForm', () => {
-
     const searchFormProps = {
         searchTerm: 'React',
         onSearchInput: jest.fn(),
         onSearchSubmit: jest.fn(),
     };
 
-    let component;
+    test('renders the input field with its value', () => {
+        render(<SearchForm {...searchFormProps} />);
 
-    beforeEach(() => {
-        component = renderer.create(<SearchForm {...searchFormProps} />);
+        expect(screen.getByDisplayValue('React')).toBeInTheDocument();
     });
 
-    it('renders the input field with its value', () => {
-        const value = component.root.findByType(InputWithLabel).props.value;
+    test('renders the correct label', () => {
+        render(<SearchForm {...searchFormProps} />);
 
-        expect(value).toEqual('React');
+        expect(screen.getByLabelText(/Search/)).toBeInTheDocument();
     });
 
-    it('changes the input field', () => {
-        const pseudoEvent = { target: 'Redux' };
+    test('calls onSearchInput on input field change', () => {
+        render(<SearchForm {...searchFormProps} />);
 
-        component.root.findByType('input').props.onChange(pseudoEvent);
+        fireEvent.change(screen.getByDisplayValue('React'), {
+            target: { value: 'Redux' },
+        });
 
         expect(searchFormProps.onSearchInput).toHaveBeenCalledTimes(1);
-        expect(searchFormProps.onSearchInput).toHaveBeenCalledWith(
-            pseudoEvent
-        );
     });
 
-    it('submits the form', () => {
-        const pseudoEvent = {};
+    test('calls onSearchSubmit on button submit click', () => {
+        render(<SearchForm {...searchFormProps} />);
 
-        component.root.findByType('form').props.onSubmit(pseudoEvent);
+        fireEvent.submit(screen.getByRole('button'));
 
         expect(searchFormProps.onSearchSubmit).toHaveBeenCalledTimes(1);
-        expect(searchFormProps.onSearchSubmit).toHaveBeenCalledWith(
-            pseudoEvent
-        );
     });
 
-    it('disables the button and prevents submit', () => {
-        component.update(
-            <SearchForm {...searchFormProps} searchTerm="" />
-        );
-
-        expect(
-            component.root.findByType('button').props.disabled
-        ).toBeTruthy();
+    test('renders snapshot', () => {
+        const { container } = render(<SearchForm {...searchFormProps} />);
+        expect(container.firstChild).toMatchSnapshot();
     });
 });
 
 describe('App', () => {
-    it('succeeds fetching data with a list', () => {
-        const list = [
-            {
-                title: 'React',
-                url: 'https://reactjs.org/',
-                author: 'Jordan Walke',
-                num_comments: 3,
-                points: 4,
-                objectID: 0,
-            },
-            {
-                title: 'Redux',
-                url: 'https://redux.js.org/',
-                author: 'Dan Abramov, Andrew Clark',
-                num_comments: 2,
-                points: 5,
-                objectID: 1,
-            },
-        ];
-
+    test('succeeds fetching data', async () => {
         const promise = Promise.resolve({
             data: {
-                hits: list,
+                hits: stories,
             },
         });
 
         axios.get.mockImplementationOnce(() => promise);
-        let component;
 
-        await renderer.act(async () => {
-            component = renderer.create(<App />);
-        });
+        render(<App />);
 
+        expect(screen.queryByText(/Loading/)).toBeInTheDocument();
 
-        expect(component.root.findByType(List).props.list).toEqual(list);
+        await act(() => promise);
+
+        expect(screen.queryByText(/Loading/)).toBeNull();
+
+        expect(screen.getByText('React')).toBeInTheDocument();
+        expect(screen.getByText('Redux')).toBeInTheDocument();
+        expect(screen.getAllByText('Dismiss').length).toBe(2);
     });
 
-    it('fails fetching data with a list', async () => {
+    test('fails fetching data', async () => {
         const promise = Promise.reject();
 
         axios.get.mockImplementationOnce(() => promise);
 
-        let component;
+        render(<App />);
 
-        await renderer.act(async () => {
-            component = renderer.create(<App />);
+        expect(screen.queryByText(/Loading/)).toBeInTheDocument();
+
+        try {
+            await act(() => promise);
+        } catch (error) {
+            expect(screen.queryByText(/Loading/)).toBeNull();
+            expect(screen.queryByText(/went wrong/)).toBeInTheDocument();
+        }
+    });
+
+    test('removes a story', async () => {
+        const promise = Promise.resolve({
+            data: {
+                hits: stories,
+            },
         });
 
-        expect(component.root.findByType('p').props.children).toEqual(
-            'Something went wrong ...'
-        );
+        axios.get.mockImplementationOnce(() => promise);
+
+        render(<App />);
+
+        await act(() => promise);
+
+        expect(screen.getAllByText('Dismiss').length).toBe(2);
+        expect(screen.getByText('Jordan Walke')).toBeInTheDocument();
+
+        fireEvent.click(screen.getAllByText('Dismiss')[0]);
+
+        expect(screen.getAllByText('Dismiss').length).toBe(1);
+        expect(screen.queryByText('Jordan Walke')).toBeNull();
+    });
+
+    test('searches for specific stories', async () => {
+        const reactPromise = Promise.resolve({
+            data: {
+                hits: stories,
+            },
+        });
+
+        const anotherStory = {
+            title: 'JavaScript',
+            url: 'https://en.wikipedia.org/wiki/JavaScript',
+            author: 'Brendan Eich',
+            num_comments: 15,
+            points: 10,
+            objectID: 3,
+        };
+
+        const javascriptPromise = Promise.resolve({
+            data: {
+                hits: [anotherStory],
+            },
+        });
+
+        axios.get.mockImplementation(url => {
+            if (url.includes('React')) {
+                return reactPromise;
+            }
+
+            if (url.includes('JavaScript')) {
+                return javascriptPromise;
+            }
+
+            throw Error();
+        });
+
+        // Initial Render
+
+        render(<App />);
+
+        // First Data Fetching
+
+        await act(() => reactPromise);
+
+        expect(screen.queryByDisplayValue('React')).toBeInTheDocument();
+        expect(screen.queryByDisplayValue('JavaScript')).toBeNull();
+
+        expect(screen.queryByText('Jordan Walke')).toBeInTheDocument();
+        expect(
+            screen.queryByText('Dan Abramov, Andrew Clark')
+        ).toBeInTheDocument();
+        expect(screen.queryByText('Brendan Eich')).toBeNull();
+
+        // User Interaction -> Search
+
+        fireEvent.change(screen.queryByDisplayValue('React'), {
+            target: {
+                value: 'JavaScript',
+            },
+        });
+
+        expect(screen.queryByDisplayValue('React')).toBeNull();
+        expect(
+            screen.queryByDisplayValue('JavaScript')
+        ).toBeInTheDocument();
+
+        fireEvent.submit(screen.queryByText('Submit'));
+
+        // Second Data Fetching
+
+        await act(() => javascriptPromise);
+
+        expect(screen.queryByText('Jordan Walke')).toBeNull();
+        expect(
+            screen.queryByText('Dan Abramov, Andrew Clark')
+        ).toBeNull();
+        expect(screen.queryByText('Brendan Eich')).toBeInTheDocument();
     });
 });
